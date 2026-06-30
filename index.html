@@ -727,6 +727,22 @@ canvas#ecgCanvas { display: block; width: 100%; height: 100%; }
     </button>
   </div>
 
+  <!-- ▸ ECG SIGNAL DISPLAY — style moniteur cardiaque fond noir -->
+  <div class="ecg-section" id="ecgSection">
+    <div class="ecg-header">
+      <div>
+        <div class="ecg-label">ECG SIGNAL DISPLAY</div>
+        <div class="ecg-speed-label">25 mm/s</div>
+      </div>
+      <div class="ecg-mode-badge normal" id="ecgModeBadge">NORMAL ECG</div>
+    </div>
+    <div class="ecg-canvas-wrap">
+      <div class="ecg-bpm-label">BPM COURANT</div>
+      <div class="ecg-bpm-overlay dim" id="ecgBpmOverlay">—</div>
+      <canvas id="ecgCanvas"></canvas>
+    </div>
+  </div>
+
   <!-- ▸ ÉTAT CLINIQUE -->
   <div class="etat-bar standby" id="etatBar">
     <span id="etatLabel">STANDBY</span>
@@ -852,7 +868,7 @@ function confirmFG() {
   _launch(age, sexe, morpho);
 }
 
-async function _launch(age, sexe, morpho) {
+function _launch(age, sexe, morpho) {
   S.patient = {age, sexe, morpho};
   S.algo = calcAlgo(age, sexe, morpho);
   S.monitoring = true;
@@ -862,26 +878,27 @@ async function _launch(age, sexe, morpho) {
   document.getElementById('btnStart').style.display='none';
   document.getElementById('btnStop').style.display='block';
 
-  /* Save to Firebase */
+  /* ▸ Démarrage immédiat du signal — ne dépend jamais de Firebase */
+  initEcgCanvas();
+  ecgLoop();
+  toast('▶ Monitoring démarré');
+
+  /* Save to Firebase — en arrière-plan, ne bloque jamais le signal */
   if(window.FB?.ok) {
-    try {
-      const ref = await window.FB.addDoc(window.FB.collection(window.FB.db,'patients'),{
-        age, sexe, morphologie:morpho,
-        tranche: S.algo.tranche,
-        BPM_min: S.algo.BPM_min,
-        BPM_max: S.algo.BPM_max,
-        profondeur: S.algo.profondeur,
-        force: S.algo.force,
-        timestamp: window.FB.serverTimestamp()
-      });
+    window.FB.addDoc(window.FB.collection(window.FB.db,'patients'),{
+      age, sexe, morphologie:morpho,
+      tranche: S.algo.tranche,
+      BPM_min: S.algo.BPM_min,
+      BPM_max: S.algo.BPM_max,
+      profondeur: S.algo.profondeur,
+      force: S.algo.force,
+      timestamp: window.FB.serverTimestamp()
+    }).then(ref => {
       S.sessionId = ref.id;
       S.fbReady = true;
       toast('Patient enregistré · Firebase ✓');
-    } catch(e) { console.warn('Firebase:', e.message); }
+    }).catch(e => console.warn('Firebase:', e.message));
   }
-
-  ecgLoop();
-  toast('▶ Monitoring démarré');
 }
 
 function stopMonitoring() {
@@ -898,6 +915,16 @@ function stopMonitoring() {
 ═══════════════════════════════════════ */
 let ecgBuf=[], ecgHead=0;
 const W=440, H=160;
+
+function initEcgCanvas() {
+  const c = document.getElementById('ecgCanvas');
+  c.width=W; c.height=H;
+  ecgBuf = new Array(W).fill(H/2);
+  ecgHead = 0;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#04090f';
+  ctx.fillRect(0,0,W,H);
+}
 
 /* ═══════════════════════════════════════
    ECG SIGNAL GENERATOR
@@ -939,7 +966,7 @@ function qrs(p) {
 }
 
 /* ═══════════════════════════════════════
-   ECG LOOP — calcul uniquement, pas d'affichage
+   ECG LOOP
 ═══════════════════════════════════════ */
 function ecgLoop() {
   if(!S.monitoring) return;
@@ -990,25 +1017,12 @@ function runAlgo(samp, now) {
    UPDATE UI
 ═══════════════════════════════════════ */
 function updateUI(bpm, etat, massage) {
-  /* Barre état clinique */
-  const etatBar=document.getElementById('etatBar');
-  const etatLabel=document.getElementById('etatLabel');
-  const etatIcon=document.getElementById('etatIcon');
-  const etatMap = {
-    normal:    ['RYTHME NORMAL',               'normal',  '✅'],
-    asystolie: ['ARRÊT CARDIAQUE',             'arrest',  '⛔'],
-    fv:        ['FIBRILLATION VENTRICULAIRE',  'fv',      '⚡'],
-    tachycardie:['TACHYCARDIE',                'tachy',   '⚠️'],
-    bradycardie:['BRADYCARDIE',                'brady',   '🔻'],
-  };
-  const [etxt, ecls, eico] = etatMap[etat] || ['STANDBY', 'standby', '📡'];
-  etatBar.className = 'etat-bar ' + ecls;
-  etatLabel.textContent = etxt;
-  etatIcon.textContent = eico;
-
+  /* Barre état clinique — figée, ne change plus */
 }
 
 function setStatsDefault() {
+  const overlay=document.getElementById('ecgBpmOverlay');
+  overlay.textContent='—'; overlay.className='ecg-bpm-overlay dim';
   document.getElementById('etatBar').className='etat-bar standby';
   document.getElementById('etatLabel').textContent='STANDBY';
   document.getElementById('etatIcon').textContent='📡';
