@@ -727,22 +727,6 @@ canvas#ecgCanvas { display: block; width: 100%; height: 100%; }
     </button>
   </div>
 
-  <!-- ▸ ECG SIGNAL DISPLAY — style moniteur cardiaque fond noir -->
-  <div class="ecg-section" id="ecgSection">
-    <div class="ecg-header">
-      <div>
-        <div class="ecg-label">ECG SIGNAL DISPLAY</div>
-        <div class="ecg-speed-label">25 mm/s</div>
-      </div>
-      <div class="ecg-mode-badge normal" id="ecgModeBadge">NORMAL ECG</div>
-    </div>
-    <div class="ecg-canvas-wrap">
-      <div class="ecg-bpm-label">BPM COURANT</div>
-      <div class="ecg-bpm-overlay dim" id="ecgBpmOverlay">—</div>
-      <canvas id="ecgCanvas"></canvas>
-    </div>
-  </div>
-
   <!-- ▸ ÉTAT CLINIQUE -->
   <div class="etat-bar standby" id="etatBar">
     <span id="etatLabel">STANDBY</span>
@@ -896,7 +880,6 @@ async function _launch(age, sexe, morpho) {
     } catch(e) { console.warn('Firebase:', e.message); }
   }
 
-  initEcgCanvas();
   ecgLoop();
   toast('▶ Monitoring démarré');
 }
@@ -915,13 +898,6 @@ function stopMonitoring() {
 ═══════════════════════════════════════ */
 let ecgBuf=[], ecgHead=0;
 const W=440, H=160;
-
-function initEcgCanvas() {
-  const c = document.getElementById('ecgCanvas');
-  c.width=W; c.height=H;
-  ecgBuf = new Array(W).fill(H/2);
-  ecgHead = 0;
-}
 
 /* ═══════════════════════════════════════
    ECG SIGNAL GENERATOR
@@ -963,7 +939,7 @@ function qrs(p) {
 }
 
 /* ═══════════════════════════════════════
-   ECG LOOP
+   ECG LOOP — calcul uniquement, pas d'affichage
 ═══════════════════════════════════════ */
 function ecgLoop() {
   if(!S.monitoring) return;
@@ -972,61 +948,8 @@ function ecgLoop() {
   const now = Date.now();
   const t = now/1000;
   const samp = genSample(t);
-  ecgBuf[ecgHead % W] = H/2 - samp*(H*.40);
-  ecgHead++;
 
-  drawEcg();
   runAlgo(samp, now);
-}
-
-/* ═══════════════════════════════════════
-   DRAW ECG — style moniteur cardiaque pro
-   Fond noir, grille verte, trace lumineux
-═══════════════════════════════════════ */
-function drawEcg() {
-  const c = document.getElementById('ecgCanvas');
-  const ctx = c.getContext('2d');
-  const mode = ECG_MODES[S.ecgMode].key;
-
-  /* Fond noir opaque */
-  ctx.fillStyle = '#04090f';
-  ctx.fillRect(0,0,W,H);
-
-  /* Couleur du tracé selon le mode (comme dans les images) */
-  const col = mode==='asystolie' ? '#2255aa'
-             : mode==='fv'        ? '#ff1744'
-             : mode==='tachycardie'? '#ff6d00'
-             : mode==='bradycardie'? '#ffd600'
-             : '#00ff88'; // normal = vert vif
-
-  /* Tracé ECG avec glow */
-  ctx.strokeStyle = col;
-  ctx.lineWidth = 2.2;
-  ctx.shadowColor = col;
-  ctx.shadowBlur = 10;
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
-
-  ctx.beginPath();
-  for(let i=0; i<W; i++){
-    const xi = (ecgHead+i) % W;
-    const y = ecgBuf[xi];
-    i===0 ? ctx.moveTo(i,y) : ctx.lineTo(i,y);
-  }
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-
-  /* Zone de scan (masque de progression) */
-  const sx = ecgHead % W;
-  ctx.fillStyle = '#04090f';
-  ctx.fillRect(sx, 0, 14, H);
-  /* Ligne de scan blanche */
-  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(sx+14, 0);
-  ctx.lineTo(sx+14, H);
-  ctx.stroke();
 }
 
 /* ═══════════════════════════════════════
@@ -1067,12 +990,6 @@ function runAlgo(samp, now) {
    UPDATE UI
 ═══════════════════════════════════════ */
 function updateUI(bpm, etat, massage) {
-  /* BPM courant sur overlay ECG */
-  const overlay = document.getElementById('ecgBpmOverlay');
-  overlay.textContent = bpm>0 ? bpm : '—';
-  const overlayCol = massage?'red':bpm<(S.algo?.BPM_min||60)?'yellow':bpm>(S.algo?.BPM_max||100)?'orange':'green';
-  overlay.className = 'ecg-bpm-overlay ' + overlayCol;
-
   /* Barre état clinique */
   const etatBar=document.getElementById('etatBar');
   const etatLabel=document.getElementById('etatLabel');
@@ -1092,8 +1009,6 @@ function updateUI(bpm, etat, massage) {
 }
 
 function setStatsDefault() {
-  const overlay=document.getElementById('ecgBpmOverlay');
-  overlay.textContent='—'; overlay.className='ecg-bpm-overlay dim';
   document.getElementById('etatBar').className='etat-bar standby';
   document.getElementById('etatLabel').textContent='STANDBY';
   document.getElementById('etatIcon').textContent='📡';
